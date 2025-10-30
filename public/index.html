@@ -63,10 +63,6 @@
             border-color: #4CAF50;
         }
 
-        .text-element.hidden {
-            display: none;
-        }
-
         #controls {
             position: absolute;
             bottom: 0;
@@ -428,11 +424,6 @@
         // Démarrer l'enregistrement
         startBtn.addEventListener('click', () => {
             recordedChunks = [];
-            
-            // Cacher tous les textes pendant l'enregistrement
-            textElements.forEach(el => el.classList.add('hidden'));
-            controls.style.display = 'none';
-            toggleControlsBtn.style.display = 'none';
 
             const options = { mimeType: 'video/webm;codecs=vp9,opus' };
             mediaRecorder = new MediaRecorder(stream, options);
@@ -448,11 +439,6 @@
                 
                 // Upload automatique IMMÉDIAT
                 await uploadVideo(blob);
-                
-                // Réafficher les contrôles
-                textElements.forEach(el => el.classList.remove('hidden'));
-                controls.style.display = 'flex';
-                toggleControlsBtn.style.display = 'block';
             };
 
             mediaRecorder.start();
