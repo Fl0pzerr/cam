@@ -196,13 +196,15 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background: rgba(0,0,0,0.9);
+            background: rgba(0,0,0,0.95);
             color: white;
-            padding: 20px 30px;
+            padding: 25px 35px;
             border-radius: 15px;
-            font-size: 16px;
+            font-size: 18px;
             display: none;
             z-index: 2000;
+            text-align: center;
+            min-width: 250px;
         }
 
         #uploadStatus.active {
@@ -211,6 +213,12 @@
 
         .success {
             background: rgba(76, 175, 80, 0.95) !important;
+        }
+
+        .progress-text {
+            font-size: 14px;
+            margin-top: 10px;
+            opacity: 0.8;
         }
     </style>
 </head>
@@ -224,7 +232,10 @@
 
         <div class="recording-indicator" id="recordingIndicator">● REC</div>
         <div id="timer">00:00</div>
-        <div id="uploadStatus">Upload en cours...</div>
+        <div id="uploadStatus">
+            <div id="statusText">⏳ Traitement en cours...</div>
+            <div class="progress-text" id="progressText"></div>
+        </div>
 
         <div id="controls">
             <textarea id="textInput" placeholder="Entrez votre texte..."></textarea>
@@ -257,6 +268,8 @@
         const recordingIndicator = document.getElementById('recordingIndicator');
         const timer = document.getElementById('timer');
         const uploadStatus = document.getElementById('uploadStatus');
+        const statusText = document.getElementById('statusText');
+        const progressText = document.getElementById('progressText');
 
         // Toggle controls
         toggleControlsBtn.addEventListener('click', () => {
@@ -286,12 +299,10 @@
             let initialDistance = 0;
             let initialFontSize = 32;
             
-            // Hammer.js pour gestures tactiles
             const hammer = new Hammer(el);
             hammer.get('pinch').set({ enable: true });
             hammer.get('pan').set({ direction: Hammer.DIRECTION_ALL });
 
-            // Pinch pour zoomer
             hammer.on('pinchstart', (e) => {
                 initialFontSize = parseInt(el.style.fontSize) || 32;
             });
@@ -301,7 +312,6 @@
                 el.style.fontSize = newSize + 'px';
             });
 
-            // Pan pour déplacer
             let startX = 0, startY = 0;
             hammer.on('panstart', (e) => {
                 const rect = el.getBoundingClientRect();
@@ -321,19 +331,16 @@
                 el.classList.remove('selected');
             });
 
-            // Touch pour sélectionner
             el.addEventListener('touchstart', (e) => {
                 e.stopPropagation();
                 selectedElement = el;
             });
 
-            // Double tap pour supprimer
             hammer.on('doubletap', () => {
                 el.remove();
                 textElements = textElements.filter(t => t !== el);
             });
 
-            // Mouse events pour desktop
             let isDragging = false;
             let offsetX, offsetY;
 
@@ -361,7 +368,6 @@
                 }
             });
 
-            // Mouse wheel pour zoom sur desktop
             el.addEventListener('wheel', (e) => {
                 e.preventDefault();
                 const currentSize = parseInt(el.style.fontSize) || 32;
@@ -384,14 +390,26 @@
             }
         }
 
-        // Upload automatique
-        async function uploadVideo(blob) {
-            const formData = new FormData();
-            formData.append('video', blob, `video_${Date.now()}.mp4`);
+        // Télécharger la vidéo sur le téléphone
+        function downloadToPhone(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 100);
+        }
 
-            uploadStatus.textContent = '⏳ Upload en cours...';
-            uploadStatus.classList.add('active');
-            uploadStatus.classList.remove('success');
+        // Upload sur le serveur
+        async function uploadToServer(blob, filename) {
+            const formData = new FormData();
+            formData.append('video', blob, filename);
 
             try {
                 const response = await fetch('/upload', {
@@ -399,26 +417,46 @@
                     body: formData
                 });
 
-                if (response.ok) {
-                    uploadStatus.textContent = '✓ Vidéo sauvegardée !';
-                    uploadStatus.classList.add('success');
-                    setTimeout(() => {
-                        uploadStatus.classList.remove('active');
-                    }, 2000);
-                }
+                return response.ok;
             } catch (error) {
-                uploadStatus.textContent = '✗ Erreur upload';
-                setTimeout(() => {
-                    uploadStatus.classList.remove('active');
-                }, 2000);
+                console.error('Erreur upload serveur:', error);
+                return false;
             }
         }
 
-        // Convertir WebM vers MP4 (simulation - nécessite FFmpeg côté serveur)
-        async function convertToMP4(webmBlob) {
-            // Pour une vraie conversion, il faut FFmpeg côté serveur
-            // Ici on retourne le blob tel quel
-            return webmBlob;
+        // Sauvegarder la vidéo (serveur + téléphone)
+        async function saveVideo(blob) {
+            const filename = `video_${Date.now()}.webm`;
+            
+            uploadStatus.classList.add('active');
+            uploadStatus.classList.remove('success');
+            
+            // Étape 1: Upload sur le serveur
+            statusText.textContent = '⏳ Upload serveur...';
+            progressText.textContent = '(1/2)';
+            
+            const serverSuccess = await uploadToServer(blob, filename);
+            
+            // Étape 2: Téléchargement sur le téléphone
+            statusText.textContent = '📱 Sauvegarde téléphone...';
+            progressText.textContent = '(2/2)';
+            
+            await new Promise(resolve => setTimeout(resolve, 500));
+            downloadToPhone(blob, filename);
+            
+            // Confirmation finale
+            if (serverSuccess) {
+                statusText.textContent = '✓ Vidéo sauvegardée !';
+                progressText.textContent = 'Serveur ✓ | Téléphone ✓';
+                uploadStatus.classList.add('success');
+            } else {
+                statusText.textContent = '⚠ Sauvegarde partielle';
+                progressText.textContent = 'Serveur ✗ | Téléphone ✓';
+            }
+            
+            setTimeout(() => {
+                uploadStatus.classList.remove('active');
+            }, 3000);
         }
 
         // Démarrer l'enregistrement
@@ -437,8 +475,8 @@
             mediaRecorder.onstop = async () => {
                 const blob = new Blob(recordedChunks, { type: 'video/webm' });
                 
-                // Upload automatique IMMÉDIAT
-                await uploadVideo(blob);
+                // Sauvegarde double: serveur + téléphone
+                await saveVideo(blob);
             };
 
             mediaRecorder.start();
